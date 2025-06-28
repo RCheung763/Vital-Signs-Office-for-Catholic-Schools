@@ -1,0 +1,343 @@
+---
+title: "Untitled"
+output: html_document
+date: "2025-06-01"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(nnet)
+library(janitor)
+library(caret)  
+library(nnet) 
+library(mclogit)
+library(plm)
+library(reshape2)
+library(car)
+library(pROC)
+```
+
+```{r}
+# Read in data 
+final_model_datasetv2 <- read_csv("~/Desktop/Capstone_2025/Office-of-Catholic-Schools-MSDS-25.3-/Data/final_model_datasetv2.csv")
+
+# Drop index row
+df_raw <- final_model_datasetv2 %>% 
+  select(-`...1`)
+
+# Clean variable names
+df_clean <- clean_names(df_raw)
+
+# Drop unsused vars
+df <-  df_clean %>% 
+  select(school_id, year_x, ts_non_catholic, net_program_80, 85:143)
+```
+
+```{r}
+# deficit_class
+df$deficit_class <- case_when(
+  df$net_program_80 > 10000 ~ "surplus",
+  df$net_program_80 < -10000 ~ "deficit",
+  TRUE ~ "balanced"
+)
+
+# Create deficit
+df$deficit_class <- factor(df$deficit_class, levels = c("surplus", "balanced", "deficit"))
+
+# Create surplus
+# df$surplus_class <- factor(if_else(df$deficit_class == 'surplus', 1,0))
+
+# Correct St. Mary
+# df$ts_capacity <- if_else(df$school_id == 1068 & df$year =="2021_22", 400, df$ts_capacity)
+
+# Create School age children 
+df <- df %>% 
+  mutate(school_age_children = under_5 + x5_9 + x10_14)
+
+df <- df %>% 
+  select(-net_program_80, -school_year)
+```
+
+```{r}
+# Scale population data
+
+df_scaled <- df
+#df_scaled <- df %>%
+  # mutate(year_x = as.integer(as.character(year_x))) %>%
+  # mutate(across(c("american_indian_alaskan_native", "asian","black_african_american","native_hawaiian_pacific_islander","other_race","white",
+  #                 "two_or_more", "x10_14", "x15_19","x20_24","x25_23","x35_44","x45_54","x5_9","x55_59","x60_64","x65_74",  "pub_all_students", "pub_female", "pub_male", "pub_americanindian_alaskanative",
+  # "pub_asian", "pub_black_africanamerican", "pub_hispanic_latino",
+  # "pub_nativehawaiian_pacificislander", "pub_two_more", "pub_white"),
+  #               ~ as.numeric(scale(.))))
+
+```
+
+```{r}
+# Define train and test years
+train_data <- df_scaled %>% filter(year_x %in% c(2018, 2019, 2020))
+valid_data <- df_scaled %>%  filter(year_x == 2021)
+test_data <- df_scaled %>%  filter(year_x == 2022)
+
+# Split
+train_valid <- bind_rows(train_data, valid_data)
+train_valid$set <- ifelse(train_valid$year_x == 2019, "valid", "train")
+```
+
+# Check for multicollinearity
+```{r}
+# Assuming train_df is your data, and response is a factor column, e.g. "deficit_class"
+response_var <- "deficit_class"
+
+# Select predictors only 
+predictors_df <- train_data %>% select(
+  "ts_non_catholic", "total_households", "total_families",
+  "households_with_children_under_18", "owner_occupied_units", "renter_occupied_units",
+  "nonfamily_total_households", "avg_household_size", "avg_family_size",
+  "married_avg_household_size", "nonfamily_avg_household_size", "married_avg_family_size",
+  "med_inc_all_households", "med_inc_med_income_families", "total_population",
+  "american_indian_alaskan_native", "asian", "black_african_american", "two_or_more",
+  "x10_14", "x15_19", "x20_24", "x25_23", "x35_44", "x45_54", "x5_9", "x55_59",
+  "x60_64", "x65_74", "x75_84", "x85_over", "under_5", 
+  "pub_all_students", "pub_female", "pub_male", "pub_americanindian_alaskanative",
+  "pub_asian", "pub_black_africanamerican", "pub_hispanic_latino",
+  "pub_nativehawaiian_pacificislander", "pub_two_more", "pub_white",
+  "school_count", "percent_met_standard_ela", "percent_met_standard_math",
+  "percent_level1_ela", "percent_level1_math", "percent_level2_ela", "percent_level2_math",
+  "percent_level3_ela", "percent_level3_math", "percent_level4_ela", "percent_level4_math",
+  "private_enroll", "private_count"
+)
+
+predictors_numeric <- model.matrix(~ . -1, data = predictors_df) %>% as.data.frame()
+
+# Remove zero variance columns
+nzv_cols <- sapply(predictors_numeric, function(x) sd(x) == 0)
+predictors_numeric <- predictors_numeric[, !nzv_cols]
+
+# VIF
+vif_values <- sapply(names(predictors_numeric), function(pred) {
+  other_preds <- setdiff(names(predictors_numeric), pred)
+  fmla <- as.formula(paste(pred, "~", paste(other_preds, collapse = "+")))
+  lm_fit <- lm(fmla, data = predictors_numeric)
+  summary(lm_fit)$r.squared
+})
+
+vif <- 1 / (1 - vif_values)
+print(vif)
+
+```
+
+# Model Formulas
+```{r}
+# Full model train 100% test 70.2% multicollinearity present
+model_formula <- as.formula(deficit_class ~ factor(region) + ts_non_catholic + total_households + households_with_children_under_18 +  nonfamily_total_households + owner_occupied_units + renter_occupied_units + married_avg_household_size + nonfamily_avg_household_size + married_avg_family_size + med_inc_all_households + med_inc_med_income_families + total_population + american_indian_alaskan_native + asian + black_african_american + native_hawaiian_pacific_islander + other_race + white + two_or_more + x10_14 + x15_19 + x20_24 + x25_23 + x35_44 + x45_54 + x5_9 + x55_59 + x60_64 + x65_74 + x75_84 + x85_over + under_5 + pub_all_students + pub_female + pub_male + pub_americanindian_alaskanative + pub_asian + pub_black_africanamerican + pub_hispanic_latino + pub_nativehawaiian_pacificislander + pub_two_more + pub_white + school_count + percent_met_standard_ela + percent_met_standard_math + private_enroll + private_count + factor(school_id))
+
+# Model 2 69% training 60% test
+model_formula <- as.formula(
+  deficit_class ~  ts_non_catholic + total_households +
+    renter_occupied_units + avg_family_size + med_inc_all_households +
+     american_indian_alaskan_native + asian + school_count+
+    black_african_american + two_or_more + pub_all_students +
+    percent_met_standard_math + private_enroll + private_count +
+    factor(school_id)
+)
+
+```
+
+
+```{r}
+model <- multinom(model_formula, data = train_data)
+summary(model)
+```
+
+```{r}
+predictions <- predict(model, newdata = valid_data)
+
+accuracy <- mean(predictions ==valid_data$deficit_class)
+print(paste("Validation Accuracy:", round(accuracy * 100, 2), "%"))
+```
+
+```{r}
+predictions <- predict(model, newdata = test_data)
+
+accuracy <- mean(predictions ==test_data$deficit_class)
+print(paste("Test Accuracy:", round(accuracy * 100, 2), "%"))
+```
+
+```{r}
+# Confusion Matrix
+conf_mat <- confusionMatrix(factor(predictions), factor(valid_data$deficit_class))
+
+# View metrics
+print(conf_mat)
+
+# Specific Metrics
+precision <- conf_mat$byClass["Pos Pred Value"] 
+recall <- conf_mat$byClass["Sensitivity"]      
+f1 <- 2 * (precision * recall) / (precision + recall)
+```
+
+```{r}
+# Open PNG device
+png("multiclass_roc.png", width = 800, height = 600)
+
+# Predict probabilities on test set
+y_prob <- predict(model, newdata = valid_data, type = "prob")
+
+# Get true labels
+y_true <- test_data$deficit_class
+
+# Compute multiclass ROC
+roc_multi <- multiclass.roc(response = y_true, predictor = as.matrix(y_prob))
+
+roc_list <- roc_multi$rocs
+
+# Define labels
+class_names <- levels(y_true)  # or manually: c("Low", "Medium", "High")
+legend_labels <- paste("Class", class_names, "vs rest")
+
+# Define colors
+colors <- rainbow(length(roc_list))
+
+# Plot ROC curves
+plot(roc_list[[1]][[1]], col = colors[1], main = "Multiclass ROC", legacy.axes = TRUE, print.auc = TRUE)
+
+
+for (i in 2:length(roc_list)) {
+  plot(roc_list[[i]][[1]], add = TRUE, col = colors[i], print.auc = TRUE, print.auc.y = 0.9 - i * 0.05)
+}
+
+# Legend
+legend("bottomright", legend = legend_labels, col = colors, lwd = 2)
+
+
+dev.off()
+
+```
+
+# Train on all data and test
+
+```{r}
+# Define train and test years
+train_data <- df_scaled %>% filter(year_x %in% c(2018, 2019, 2020))
+test_data <- df_scaled %>%  filter(year_x == 2022)
+
+# Split
+train_valid <- bind_rows(train_data, test_data)
+train_valid$set <- ifelse(train_valid$year_x == 2019, "valid", "train")
+```
+
+```{r}
+model <- multinom(model_formula, data = train_data)
+summary(model)
+```
+
+```{r}
+predictions <- predict(model, newdata = valid_data)
+
+accuracy <- mean(predictions == valid_data$deficit_class)
+print(paste("Validation Accuracy:", round(accuracy * 100, 2), "%"))
+```
+
+```{r}
+# Confusion Matrix 
+conf_mat <- confusionMatrix(factor(predictions), factor(valid_data$deficit_class))
+
+# View all metrics
+print(conf_mat)
+
+# Access specific metrics
+precision <- conf_mat$byClass["Pos Pred Value"]  # Precision
+recall <- conf_mat$byClass["Sensitivity"]        # Recall
+f1 <- 2 * (precision * recall) / (precision + recall)
+```
+
+```{r}
+# Open PNG device with larger margins
+png("multiclass_roc2.png", width = 800, height = 700)
+
+# Increase plot margins
+par(mar = c(5, 4, 4, 5), xpd = TRUE)
+
+# Predict probabilities on test set
+y_prob <- predict(model, newdata = valid_data, type = "prob")
+
+# Get true labels
+y_true <- test_data$deficit_class
+
+# Compute multiclass ROC
+roc_multi <- multiclass.roc(response = y_true, predictor = as.matrix(y_prob))
+
+# Extract actual roc objects
+roc_list <- roc_multi$rocs
+
+# Define labels
+class_names <- levels(y_true)
+legend_labels <- paste("Class", class_names, "vs all others")
+
+# Define colors
+colors <- rainbow(length(roc_list))
+
+options(scipen = 999) 
+
+# Plot ROC
+plot(roc_list[[1]][[1]], 
+     col = colors[1], 
+     main = "Multiclass ROC", 
+     legacy.axes = TRUE, 
+     print.auc = TRUE,
+     xlab = "False Positive Rate (1 - Specificity)",
+     ylab = "True Positive Rate (Sensitivity)",
+     xaxt = "n",
+     cex.lab = 1.5,
+     cex.main = 1.5)
+
+# Add custom x-axis with specific tick marks
+axis(1, at = seq(0, 1, 0.2), labels = c("0.0", "0.2", "0.4", "0.6", "0.8", "1.0"))
+
+# Add rest of the curves
+for (i in 2:length(roc_list)) {
+  plot(roc_list[[i]][[1]], 
+       add = TRUE, 
+       col = colors[i], 
+       print.auc = TRUE, 
+       print.auc.y = 0.9 - i * 0.05)
+}
+
+# Add legend outside plot area
+legend(x = 1.05, y = 0.9, 
+       legend = legend_labels, 
+       col = colors, 
+       lwd = 2,
+       cex = 1.2,
+       xpd = TRUE)
+
+# Reset options back to default (optional)
+options(scipen = 0)
+
+dev.off()
+```
+
+```{r}
+signif_level <- 0.05
+
+# Get coefficient matrix
+coef_mat <- summary(model)$coefficients
+# Get standard errors
+se_mat <- summary(model)$standard.errors
+
+# Calculate z-statistics and p-values
+z <- coef_mat / se_mat
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+
+# Logical matrix where TRUE = significant
+signif_mat <- p < signif_level
+
+# Extract only significant coefficients:
+signif_coefs <- coef_mat
+
+print(signif_coefs)
+
+```
