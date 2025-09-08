@@ -104,6 +104,6 @@ SWITCH(
 _Repeat for costs metrics_ 
 MetricListCost  
   
-![DAX1](DAX1.png)
-![DAX2](DAX2.png)
-![DAX3](DAX3.png)
+![DAX1](DAX1.png)  
+![DAX2](DAX2.png)  
+![DAX3](DAX3.png)  
