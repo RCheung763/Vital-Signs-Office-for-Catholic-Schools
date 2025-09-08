@@ -6,13 +6,13 @@ import os
 from scipy.stats import entropy
 import re
 import sys
-##################################
+
 # Read in old financial data
-fy_df = pd.read_csv(r'C:/Users/cheungr/Desktop/Capstone FIles/Financial_Data_Combined.csv',index_col=0)
+fy_df = pd.read_csv(r'Financial_Data_Combined.csv',index_col=0)
 
 # Read in new financial data
-excel_file = pd.ExcelFile(r'C:/Users/cheungr/Desktop/Capstone FIles/School_PL2.xlsx', engine='openpyxl')
-##################################
+excel_file = pd.ExcelFile(r'School_PL2.xlsx', engine='openpyxl')
+
 # Get first sheet name
 first_sheet = excel_file.sheet_names[0]
 
@@ -160,14 +160,12 @@ df_transposed['year']=year
 
 new_df = pd.concat([fy_df, df_transposed], axis=0, ignore_index=True)
 
-############################
 # Enter old financial data file path
 new_df.to_csv(r'C:/Users/cheungr/Desktop/Capstone FIles/Financial_Data_Combined.csv')
 
 dm_fall = pd.read_excel(r'C:/Users/cheungr/Desktop/Capstone FIles/DataMaster2.xlsx', sheet_name='Fall', engine='openpyxl')
 
 dm_schoolcity = pd.read_excel(r'C:/Users/cheungr/Desktop/Capstone FIles/DataMaster2.xlsx', sheet_name='SchoolCity', engine='openpyxl')
-############################
 
 # Drop if schoolID is a NaN in both files
 dm_fall = dm_fall.dropna(subset='schoolID').copy()
@@ -348,4 +346,5 @@ dataset = final_df.copy()
 
 del final_df  
 print(dataset)
+
 
