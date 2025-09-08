@@ -8,10 +8,10 @@ from datetime import datetime
 import urllib.parse
 
 
-######################
+
 # Read in dataset with zip codes for each parish 
 tract_codes = pd.read_excel(r'C:\Users\cheungr\Desktop\Capstone FIles\Dependencies\parish_tracts_zips.xlsx')
-######################
+
 
 # Explode to create and array of all zips
 tract_codes['zip_codes'] = tract_codes['zip_codes'].astype(str).apply(lambda x: list(set(x.split(','))))
@@ -19,10 +19,10 @@ tract_codes['zip_codes'] = tract_codes['zip_codes'].astype(str).apply(lambda x: 
 zips_exploded = tract_codes.explode('zip_codes').reset_index(drop=True)
 zips_list = zips_exploded['zip_codes'].unique()
 
-#####################
+
 # Read in variable labels and keys for each year
 api_variables = pd.read_csv(r'C:\Users\cheungr\Desktop\Capstone FIles\Dependencies\API_variables.csv')
-#####################
+
 
 api_variables.columns = [str(col) for col in api_variables.columns]
 
@@ -156,5 +156,6 @@ del zips_exploded
 del census_agg
 
 income_data = census_agg_wide.copy()
+
 
 print(income_data)
