@@ -1,10 +1,12 @@
-# DAX to create the dynamic table for each school
+### DAX to create the dynamic table for each school
 
 
-# Provides list of possible metrics for a slicer
+_Provides list of possible metrics for a slicer_
+
 MetricListRevenue
 
-# Disconnected table of measures(variables) to display
+_Disconnected table of measures(variables) to display_
+
 MetricList = DATATABLE(
     "Metric", STRING,
     {
@@ -25,9 +27,9 @@ MetricList = DATATABLE(
     }
 )
 
-# Calculates column for average for all schools 
-# SWITCH() and SELECTEDVALUE() for which metric selected
-# CALCULATE(...REMOVEFILTERS(sponsor_data[School])) removes the school-level context 
+_Calculates column for average for all schools_
+_SWITCH() and SELECTEDVALUE() for which metric selected_
+_CALCULATE(...REMOVEFILTERS(sponsor_data[School])) removes the school-level context_
 
 All Avg = 
 SWITCH(
@@ -50,9 +52,9 @@ SWITCH(
     BLANK()
 )
 
-# Calculates column for average for region selected school is in
-# SWITCH() and SELECTEDVALUE() for which metric selected
-# CALCULATE(...REMOVEFILTERS(sponsor_data[School]), sponsor_data[Region] = SelectedRegion) removes the school-level context add region filter 
+_Calculates column for average for region selected school is in_
+_SWITCH() and SELECTEDVALUE() for which metric selected_
+_CALCULATE(...REMOVEFILTERS(sponsor_data[School]), sponsor_data[Region] = SelectedRegion) removes the school-level context add region filter_ 
 
 Region Avg Value = 
 VAR SelectedRegion = SELECTEDVALUE(sponsor_data[Region])
@@ -77,7 +79,7 @@ SWITCH(
     BLANK()
 )
 
-# Returns measure for currently selected school
+_Returns measure for currently selected school_
 
 Selected School Value = 
 SWITCH(
@@ -99,7 +101,7 @@ SWITCH(
     BLANK()
 )
 
-# Repeat for costs metrics 
+_Repeat for costs metrics_ 
 MetricListCost
 
 All Avg Cost = 
